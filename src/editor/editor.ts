@@ -12,7 +12,7 @@ export function initEditor(stopLegacy: () => void): void {
   const root=document.getElementById('tab-editor')!;
   root.innerHTML=`
     <section class="editor-intro"><div><p class="editor-kicker">TU ESTUDIO LOCAL · V2</p><h1>De la idea a tu mezcla.</h1><p>Importa, ordena y escucha. Tus archivos no salen de este navegador.</p></div><span class="editor-badge">Sin IA · Sin nube</span></section>
-    <div class="editor-toolbar"><label>Proyecto <input id="ed-name" maxlength="100" value="Mi proyecto"></label><button id="ed-save">Guardar local</button><button id="ed-restore" disabled>Reabrir guardado</button><button id="ed-new">Nuevo proyecto</button><button id="ed-undo" disabled>Deshacer</button><button id="ed-redo" disabled>Rehacer</button></div>
+    <div class="editor-toolbar"><label>Proyecto <input id="ed-name" maxlength="100" value="Mi proyecto"></label><button id="ed-save">Guardar local</button><button id="ed-restore" disabled>Reabrir guardado</button><button id="ed-new">Nuevo proyecto</button><button id="ed-clear-local">Borrar mis datos locales del editor</button><button id="ed-undo" disabled>Deshacer</button><button id="ed-redo" disabled>Rehacer</button></div>
     <p id="ed-save-status" class="panel-hint" role="status">Comprobando guardado local…</p>
     <section class="editor-guide" aria-label="Preparación guiada"><div><span class="editor-step">01</span><h2>¿Qué vas a crear?</h2><label>Objetivo <select id="ed-goal"><option value="song">Canción</option><option value="voice">Voz / podcast</option><option value="master">Masterizar mezcla</option></select></label><p class="panel-hint">Voz procesa todas las pistas; canción solo las marcadas como voz. Masterizar aplica tono y nivel global, sin reverb vocal.</p></div>
       <div><span class="editor-step">02</span><h2>Elige la intensidad</h2>${['clarity:Claridad:25','ambience:Ambiente:10','level:Nivel:20'].map(item=>{const [key,label,value]=item.split(':');return `<label>${label} <output id="ed-${key}-value">${value}%</output><input id="ed-${key}" data-setting="${key}" type="range" min="0" max="100" value="${value}"></label>`}).join('')}<p class="panel-hint">Ajustes deterministas, no eliminación de ruido. Ambiente no se usa en masterizar.</p></div></section>
@@ -36,6 +36,7 @@ export function initEditor(stopLegacy: () => void): void {
   let operation: AbortController | null=null;
   let saved: SavedProject | null=null, allowAutosave=false;
   const saves=new SaveQueue(); let saveTimer: number | undefined;
+  let deleting=false, saveGeneration=0;
   let cursor=0, before=false, playing=false, startTime=0, playEpoch=0;
   const ctx=new AudioContext();
   const gain=ctx.createGain(), analyser=ctx.createAnalyser(); analyser.fftSize=1024;
@@ -59,24 +60,28 @@ export function initEditor(stopLegacy: () => void): void {
     button('ed-render').disabled=initializing || importing || rendering || encoding || !projectDuration(p());
     button('ed-download').disabled=encoding || rendering || importing || !pair || pairRevision!==revision;
     button('ed-new').disabled=initializing || importing;
-    button('ed-save').disabled=initializing || importing;
+    button('ed-save').disabled=initializing || importing || deleting;
+    button('ed-clear-local').disabled=initializing || importing || rendering || encoding || deleting;
     button('ed-restore').disabled=initializing || importing || !saved;
     input('ed-files').disabled=initializing || importing || rendering || encoding;
   }
   async function saveNow(): Promise<void> {
+    if(deleting)return;
     if(!allowAutosave){$('ed-save-status').textContent='Hay un guardado anterior. Reábrelo o pulsa Guardar local para reemplazarlo.';return;}
-    const token=revision;
+    const token=revision,generation=saveGeneration;
     try {
       const snapshot=serializeProject(p(),assets);
       $('ed-save-status').textContent='Guardando solo en este navegador…';
       await saves.enqueue(snapshot);
+      if(generation!==saveGeneration)return;
       saved=snapshot;
       if(token===revision)$('ed-save-status').textContent='Guardado local completado. Puede borrarse al limpiar los datos del navegador.';
       updateButtons();
-    } catch(e) {$('ed-save-status').textContent='No se guardó: '+errorText(e)+' Comprueba espacio/cuota y permisos de almacenamiento.';}
+    } catch(e) {if(generation!==saveGeneration)return;$('ed-save-status').textContent='No se guardó: '+errorText(e)+' Comprueba espacio/cuota y permisos de almacenamiento.';}
   }
   function scheduleSave(): void {
     clearTimeout(saveTimer);
+    if(!allowAutosave || deleting)return;
     saveTimer=window.setTimeout(()=>void saveNow(),900);
   }
   function changed(next?: Project): void {
@@ -240,6 +245,20 @@ export function initEditor(stopLegacy: () => void): void {
   button('ed-ab').addEventListener('click',()=>{const resume=playing;stop(false);before=!before;button('ed-ab').textContent='A/B: '+(before?'Antes':'Después');button('ed-ab').setAttribute('aria-pressed',String(before));if(resume)void play();});
   button('ed-cancel').addEventListener('click',()=>{operation?.abort();stop();status('Cancelado. Un render o decode nativo ya iniciado puede terminar internamente; se descarta su resultado.');});
   button('ed-render').addEventListener('click',()=>void prepare());button('ed-download').addEventListener('click',()=>void exportAudio());
+  button('ed-clear-local').addEventListener('click',()=>{
+    if(deleting || importing || rendering || encoding)return;
+    if(!confirm('¿Borrar el proyecto guardado, el audio activo y el historial de ESTE EDITOR en este navegador? Cierra otras pestañas de ASTRA antes de continuar. No borra archivos originales, descargas, copias del perfil ni las sesiones independientes de Voz/Mezcla/Conversor. Esta acción no se puede deshacer.'))return;
+    deleting=true;saveGeneration++;clearTimeout(saveTimer);stop();root.inert=true;updateButtons();
+    status('Borrando guardado local; esperando cualquier escritura en curso…');
+    void saves.clear().then(()=>{
+      saved=null;assets=new Map();history.reset(newProject());selected=null;pair=null;pairRevision=-1;revision++;
+      allowAutosave=false;draw();
+      $('ed-analysis').textContent='Sin audio. El proyecto local y el historial del editor se borraron.';
+      $('ed-save-status').textContent='Datos del editor borrados. Autoguardado pausado; Guardar local lo vuelve a activar.';
+      status('Proyecto guardado, audio activo e historial del editor borrados. Las otras herramientas son independientes.');
+    }).catch(e=>{status('No se pudo borrar: '+errorText(e)+' El proyecto activo se conserva.');})
+      .finally(()=>{deleting=false;root.inert=false;updateButtons();});
+  });
   button('ed-save').addEventListener('click',()=>{if(saved&&!allowAutosave&&!confirm('¿Reemplazar el proyecto guardado en este navegador con el actual?'))return;allowAutosave=true;clearTimeout(saveTimer);void saveNow();});
   button('ed-new').addEventListener('click',()=>{if(!confirm('¿Crear un proyecto nuevo? El guardado local se reemplazará y se vaciarán el audio y el historial actuales.'))return;clearTimeout(saveTimer);stop();assets=new Map();history.reset(newProject());selected=null;allowAutosave=true;changed();void saveNow();});
   button('ed-restore').addEventListener('click',()=>{

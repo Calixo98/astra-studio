@@ -12,14 +12,16 @@ Harden local audio resource use, microphone lifecycle, editor data deletion, pro
 
 ## Tasks
 - [x] SH1 Bound imports/encodes and recorder lifecycle. Shared 25 MiB, mono/stereo/rate/PCM/duration checks before reads where possible and after decode; serialized decode/latest-load rejection; worker encoding cancellation; global microphone stop/status, bounded chunks/time, cleanup. Tests + typecheck + build; local commit.
-- [ ] SH2 Add confirmed editor saved+active data deletion with queue generation/drain; deployable versioned browser headers and same-origin worklet; document native cancellation/memory and storage limitations. Tests + typecheck + build; local commit.
+- [x] SH2 Add confirmed editor saved+active data deletion with queue generation/drain; deployable versioned browser headers and same-origin worklet; document native cancellation/memory and storage limitations. Tests + typecheck + build; local commit.
 - [ ] SH3 Add least-privilege pinned CI, weekly dependency updates and security reporting policy. Validate config and real dependency audit evidence; tests + typecheck + build; local commit.
 
 ## Acceptance
 Existing behavior/tests remain; malformed worker messages rejected; no synchronous advanced MP3; no stale source overwrite; microphone status independent of app tab and stops when document hidden/page abandoned; deletion cannot resurrect queued writes; CSP has no unsafe-inline/eval script permission. Production headers are only prepared, never claimed deployed.
 
 ## Progress and evidence
-Branch: feature/security-hardening, base d7fccad. SH1: shared decoder and worker bounds, global bounded microphone lifecycle and cancellation implemented. Tests: 33/33 pass; npx tsc --noEmit pass; npm run build pass. Initial checks exposed UTF-8 read mismatch and test import mapping, repaired before final checks.
+Branch: feature/security-hardening, base d7fccad. SH1 commit: 4be7c5decde0968f8b7b8457a9058a0ed495fe11. SH1: shared decoder and worker bounds, global bounded microphone lifecycle and cancellation implemented. Tests: 33/33 pass; npx tsc --noEmit pass; npm run build pass. Initial checks exposed UTF-8 read mismatch and test import mapping, repaired before final checks.
+
+SH2: queue generation/drain erasure, confirmed active+saved editor deletion, same-origin worklet, versioned headers and exact-header local preview implemented. Tests 35/35; tsc/build pass. Browser checks delegated independently, pending.
 
 ## Next
-Implement SH1, then SH2 and SH3; parent independently checks production browser flows.
+Implement SH3; parent independently checks production browser flows.

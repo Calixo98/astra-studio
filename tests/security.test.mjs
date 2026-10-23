@@ -58,3 +58,32 @@ test('recorder chunks, deadline, global stop, visibility and pending permission 
   navigator.mediaDevices.getUserMedia=()=>new Promise(r=>permissionResolve=r);elements['btn-rec'].click();elements['global-recording-stop'].click();permissionResolve(stream());await tick();assert.equal(stopped,5);assert.equal(elements['btn-rec'].disabled,false);
  }finally{for(const [key,value] of Object.entries(original))Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});}
 });
+
+test('save deletion drains current write, rejects queued snapshots and blocks new writes',async()=>{
+ const modelUrl=url(await read('editor/model.ts'));
+ const {SaveQueue}=await import(url((await read('editor/storage.ts')).replace("'./model'",JSON.stringify(modelUrl))));
+ const queue=new SaveQueue();let release;const writes=[];
+ const first=queue.enqueue({name:'first'},async s=>{await new Promise(r=>release=r);writes.push(s.name);});await tick();
+ const queued=queue.enqueue({name:'stale'},async s=>writes.push(s.name));
+ const rejected=assert.rejects(queued,/descartado/);
+ const deletion=queue.clear(async()=>writes.splice(0));
+ await assert.rejects(queue.enqueue({},async()=>{}),/Borrado/);
+ release();await first;await rejected;await deletion;assert.deepEqual(writes,[]);
+ await queue.enqueue({name:'new'},async s=>writes.push(s.name));assert.deepEqual(writes,['new']);
+ await assert.rejects(queue.clear(async()=>{throw Error('quota')}),/quota/);
+ await queue.enqueue({},async()=>writes.push('recovered'));assert.equal(writes.at(-1),'recovered');
+});
+test('versioned browser headers and same-origin worklet have no script-inline/eval exceptions',async()=>{
+ const config=JSON.parse((await fs.readFile(new URL('../vercel.json',import.meta.url),'utf8')).replace(/^\uFEFF/,''));
+ const headers=Object.fromEntries(config.headers[0].headers.map(h=>[h.key,h.value]));
+ const csp=headers['Content-Security-Policy'];
+ assert.equal(config.headers[0].source,'/(.*)');
+ assert.match(csp,/script-src 'self';/);assert.match(csp,/worker-src 'self';/);
+ assert.match(csp,/frame-ancestors 'none'/);assert.match(csp,/base-uri 'none'/);assert.match(csp,/object-src 'none'/);
+ assert.doesNotMatch(csp,/script-src[^;]*(unsafe-inline|unsafe-eval|blob:)/);
+ assert.equal(headers['Permissions-Policy'],'microphone=(self), camera=(), geolocation=()');
+ assert.equal(headers['X-Content-Type-Options'],'nosniff');
+ const wrapper=await read('audio/lufsWorklet.ts');assert.match(wrapper,/new URL\('\.\/lufsProcessor.js', import.meta.url\)/);assert.doesNotMatch(wrapper,/createObjectURL|WORKLET_CODE/);
+ assert.match(await read('audio/lufsProcessor.js'),/registerProcessor\('lufs-processor'/);
+ const editor=await read('editor/editor.ts');assert.match(editor,/saveGeneration\+\+;clearTimeout\(saveTimer\)/);assert.match(editor,/history.reset\(newProject\(\)\)/);assert.match(editor,/allowAutosave=false;draw\(\)/);
+});

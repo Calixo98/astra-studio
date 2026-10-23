@@ -62,11 +62,36 @@ export async function writeSaved(snapshot: SavedProject): Promise<void> {
     });
   } finally { db.close(); }
 }
-/** Serialize writes so an older in-flight transaction can never win over a newer snapshot. */
+export async function clearSaved(): Promise<void> {
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve,reject)=>{
+      const tx=db.transaction('projects','readwrite');
+      tx.objectStore('projects').clear();
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+      tx.onabort=()=>reject(tx.error ?? new Error('No se pudo borrar el guardado.'));
+    });
+  } finally { db.close(); }
+}
+/** Serialize writes, invalidate queued snapshots, then drain before deletion. */
 export class SaveQueue {
   private tail: Promise<void> = Promise.resolve();
+  private generation = 0;
+  private deleting = false;
   enqueue(snapshot: SavedProject, writer: (s: SavedProject)=>Promise<void> = writeSaved): Promise<void> {
-    const operation=this.tail.catch(()=>{}).then(()=>writer(snapshot));
+    if(this.deleting)return Promise.reject(new Error('Borrado local en curso.'));
+    const token=this.generation;
+    const operation=this.tail.catch(()=>{}).then(()=>{
+      if(token!==this.generation)throw new Error('Guardado anterior descartado.');
+      return writer(snapshot);
+    });
     this.tail=operation; return operation;
+  }
+  clear(clearer: ()=>Promise<void> = clearSaved): Promise<void> {
+    this.generation++; this.deleting=true;
+    const operation=this.tail.catch(()=>{}).then(clearer);
+    this.tail=operation;
+    return operation.finally(()=>{this.deleting=false;});
   }
 }

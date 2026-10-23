@@ -12,7 +12,7 @@ export function validateFile(size: number): void {
 export function validateAudio(channels: number, length: number, rate: number, maxSeconds = 600): void {
   if (!Number.isInteger(channels) || channels < 1 || channels > 2) throw new Error('Solo se admite audio mono o estéreo; no se descartan canales.');
   if (!Number.isFinite(rate) || rate < 8000 || rate > 192000 || !Number.isSafeInteger(length) || length <= 0) throw new Error('El audio no contiene muestras válidas.');
-  if (length / rate > maxSeconds || channels * length * 4 > MAX_PCM_BYTES) throw new Error('El audio supera 10 minutos o 128 MiB de audio decodificado.');
+  if (length / rate > maxSeconds || channels * length * 4 > MAX_PCM_BYTES) throw new Error(`El audio supera ${maxSeconds/60} minutos o 128 MiB de audio decodificado.`);
 }
 
 export const canceled = () => new DOMException('Operación cancelada o reemplazada.', 'AbortError');

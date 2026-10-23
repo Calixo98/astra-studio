@@ -2,7 +2,7 @@
 // los parámetros actuales, renderiza, mide LUFS/pico y codifica WAV o MP3.
 
 import { encodeInWorker } from './encodeWorker';
-import { canceled } from './converterHelpers';
+import { canceled, validateAudio } from './converterHelpers';
 import { state, faderToGain, effectiveMuteGains } from './state';
 import { reverbSeconds } from './reverb';
 import { createVocalChain } from './vocalChain';
@@ -31,7 +31,9 @@ export async function renderMix(engine: Engine, signal?: AbortSignal): Promise<A
 
   const sr = engine.ctx.sampleRate;
   const tail = vocalBuf ? reverbSeconds(snapshot.vocal.reverbSize) + 0.2 : 0.2;
-  const ctx = new OfflineAudioContext(2, Math.ceil((baseDur + tail) * sr), sr);
+  const frames = Math.ceil((baseDur + tail) * sr);
+  validateAudio(2, frames, sr);
+  const ctx = new OfflineAudioContext(2, frames, sr);
 
   const master = createMasterChain(ctx, snapshot.master);
   master.output.connect(ctx.destination);
