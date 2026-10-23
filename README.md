@@ -45,9 +45,13 @@ Vite prints the actual local URL/port. No deployment is part of this work. Exist
 
 Core modules: `src/editor/model.ts` (validated descriptors/history), `storage.ts` (versioned PCM/IndexedDB queue), `render.ts` (shared preview/export scheduling and matching), `editor.ts` (guided accessible DOM controls). Deterministic regressions cover editing, history, save serialization/order, arrangement scheduling, render snapshots, reverb/protection and the existing converter. They do not replace browser, hardware, assistive-technology or low-memory testing.
 
-## Open-source preparation
+## Licencia y uso libre
 
-Source and development instructions are present, but a public release is **not** authorized or complete. A license has not been selected; no `LICENSE` file is being invented. Before publishing, the owner must choose a license, review dependency/codec redistribution obligations, remove private deployment metadata, run browser/accessibility tests and decide support/security contact policy. No repository initialization, push, deployment or publication is performed.
+El código original de ASTRA STUDIO está bajo la [licencia MIT](LICENSE). Puedes usarlo, copiarlo, modificarlo, distribuirlo, venderlo e incorporarlo en proyectos comerciales o propietarios, sin obligación de publicar tus cambios al código MIT. Conserva el aviso de copyright y la licencia en las copias o porciones sustanciales del software. Se entrega sin garantía, según el texto de la licencia.
+
+Esto no cambia las licencias de terceros: el codificador MP3 `@breezystack/lamejs` 1.2.7 declara LGPL-3.0. Sus condiciones siguen aplicando al distribuirlo, también en forks cerrados. Consulta [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) para atribuciones, textos completos, código fuente de la versión y reconstrucción con una biblioteca modificada. Los avisos y ese código fuente se incluyen en `dist/licenses/` al compilar; no se afirma una certificación legal de cumplimiento.
+
+La licencia del programa no reclama tus grabaciones ni otorga derechos sobre canciones, muestras u otros contenidos de terceros. Debes contar con los derechos necesarios para el audio que utilices. Este cambio de licencia no despliega la aplicación ni publica paquetes npm (`private: true` evita publicaciones npm accidentales, no limita los permisos MIT).
 
 ## Ayuda contextual
 Los botones `(i)` explican los controles en español sin modificar el audio. Se abren al pasar el puntero o enfocar con teclado; clic/toque fija la ayuda y otro clic la cierra. Escape, Cerrar ayuda, clic fuera o cambiar de pestaña cierran el panel. El texto se puede seleccionar y el panel admite foco y desplazamiento. Los botones están fuera de las etiquetas para no activar sus entradas. Contenido declarativo: `src/ui/helpContent.ts`; comportamiento: `src/ui/help.ts`. No incorpora dependencias ni cambia DSP. Los valores sugeridos son puntos de partida, no garantías de resultado.
