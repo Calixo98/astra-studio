@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a1220" />
+    <title>ASTRA STUDIO — Producción musical</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23f8e08a'/%3E%3Cstop offset='.5' stop-color='%23d4af37'/%3E%3Cstop offset='1' stop-color='%239a7d1f'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23g)' fill-rule='evenodd' d='M50 2 L60.78 35.16 L95.65 35.17 L67.44 55.67 L78.21 88.83 L50 68.34 L21.79 88.83 L32.56 55.67 L4.35 35.17 L39.22 35.16 Z M50 21.2 L43.47 41.1 L22.61 41.1 L39.54 53.4 L33.07 73.3 L50 61 L66.93 73.3 L60.46 53.4 L77.39 41.1 L56.47 41.1 Z'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand-star" viewBox="0 0 100 100" aria-hidden="true">
+          <defs>
+            <linearGradient id="star-gold" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#f8e08a" />
+              <stop offset="0.5" stop-color="#d4af37" />
+              <stop offset="1" stop-color="#9a7d1f" />
+            </linearGradient>
+          </defs>
+          <path
+            fill="url(#star-gold)"
+            fill-rule="evenodd"
+            d="M50 2 L60.78 35.16 L95.65 35.17 L67.44 55.67 L78.21 88.83 L50 68.34 L21.79 88.83 L32.56 55.67 L4.35 35.17 L39.22 35.16 Z M50 21.2 L43.47 41.1 L22.61 41.1 L39.54 53.4 L33.07 73.3 L50 61 L66.93 73.3 L60.46 53.4 L77.39 41.1 L56.47 41.1 Z"
+          />
+          <path d="M50 2 L39.22 35.16 L43.47 41.1 L50 21.2 Z" fill="rgba(255,255,255,0.4)" />
+        </svg>
+        <span class="brand-bar" aria-hidden="true"></span>
+        <div class="brand-text">
+          <span class="brand-name">ASTRA STUDIO</span>
+          <span class="brand-sub">Tu estudio local · Editor multipista</span>
+        </div>
+      </div>
+      <div class="transport">
+        <button id="btn-play" class="tbtn" title="Reproducir" disabled aria-label="Reproducir">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+        </button>
+        <button id="btn-pause" class="tbtn" title="Pausa" disabled aria-label="Pausa">
+          <svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z" /></svg>
+        </button>
+        <button id="btn-stop" class="tbtn" title="Detener" disabled aria-label="Detener">
+          <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z" /></svg>
+        </button>
+        <span id="time-display" class="time">0:00 / 0:00</span>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="editor" role="tab" aria-selected="true">Editor V2</button>
+      <button class="tab" data-tab="voz">Voz avanzada</button>
+      <button class="tab" data-tab="master">Master</button>
+      <button class="tab" data-tab="mezcla">Mezcla</button>
+      <button class="tab" data-tab="exportar">Exportar</button>
+<button class="tab" data-tab="conversor">Conversor</button>
+    </nav>
+
+    <main>
+      <!-- ══════════ VOZ ══════════ -->
+      <section id="tab-editor" class="tab-panel active" aria-label="Editor multipista"></section>
+      <section id="tab-voz" class="tab-panel">
+        <div class="dropzone" id="drop-vocal">
+          <input type="file" id="file-vocal" accept="audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" hidden />
+          <svg viewBox="0 0 24 24" class="drop-icon"><path d="M12 3a4 4 0 0 1 4 4v5a4 4 0 0 1-8 0V7a4 4 0 0 1 4-4zm-7 9h2a5 5 0 0 0 10 0h2a7 7 0 0 1-6 6.9V21h-2v-2.1A7 7 0 0 1 5 12z"/></svg>
+          <p class="drop-title">Subir pista vocal</p>
+          <p class="drop-hint">Arrastra un archivo MP3 o WAV, o toca para elegir. Es opcional: puedes trabajar solo con el beat.</p>
+          <p class="drop-file" id="name-vocal"></p>
+          <div class="drop-actions" hidden>
+            <button class="drop-btn" data-action="replace">Cambiar archivo</button>
+            <button class="drop-btn drop-btn-remove" data-action="remove">✕ Quitar pista</button>
+          </div>
+        </div>
+
+        <div class="rec-bar">
+          <button id="btn-rec" class="rec-btn">● Grabar con micrófono</button>
+          <span id="rec-time" class="rec-time" hidden>0:00</span>
+          <span id="rec-hint" class="rec-hint">¿No tienes la voz grabada? Graba directo aquí: si hay beat cargado, sonará de fondo mientras cantas (usa audífonos).</span>
+        </div>
+
+        <div class="preset-row" id="preset-row">
+          <span class="preset-label">Presets</span>
+          <!-- botones generados desde src/audio/presets.ts -->
+        </div>
+
+        <div class="panels">
+          <div class="panel">
+            <h3>Ecualizador</h3>
+            <label class="ctl">
+              <span class="ctl-name">Bajos <small>120 Hz</small></span>
+              <input type="range" id="v-eq-low" min="-12" max="12" step="0.5" value="0" />
+              <span class="ctl-val" id="v-eq-low-val"></span>
+            </label>
+            <label class="ctl">
+              <span class="ctl-name">Medios <small>1.5 kHz</small></span>
+              <input type="range" id="v-eq-mid" min="-12" max="12" step="0.5" value="0" />
+              <span class="ctl-val" id="v-eq-mid-val"></span>
+            </label>
+            <label class="ctl">
+              <span class="ctl-name">Altos <small>8 kHz</small></span>
+              <input type="range" id="v-eq-high" min="-12" max="12" step="0.5" value="0" />
+              <span class="ctl-val" id="v-eq-high-val"></span>
+            </label>
+          </div>
+
+          <div class="panel">
+            <h3>Claridad y sibilancia</h3>
+            <label class="ctl">
+              <span class="ctl-name">Claridad vocal</span>
+              <input type="range" id="v-clarity" min="0" max="100" step="1" value="25" />
+              <span class="ctl-val" id="v-clarity-val"></span>
+            </label>
+            <label class="ctl">
+              <span class="ctl-name">De-esser</span>
+              <input type="range" id="v-deesser" min="0" max="100" step="1" value="30" />
+              <span class="ctl-val" id="v-deesser-val"></span>
+            </label>
+            <p class="panel-hint">El de-esser reduce los sonidos «S» agresivos por encima de 6 kHz.</p>
+          </div>
+
+          <div class="panel">
+            <h3>Compresor</h3>
+            <label class="ctl">
+              <span class="ctl-name">Threshold</span>
+              <input type="range" id="v-comp-threshold" min="-60" max="0" step="1" value="-18" />
+              <span class="ctl-val" id="v-comp-threshold-val"></span>
+            </label>
+            <label class="ctl">
+              <span class="ctl-name">Ataque</span>
+              <input type="range" id="v-comp-attack" min="1" max="100" step="1" value="10" />
+              <span class="ctl-val" id="v-comp-attack-val"></span>
+            </label>
+            <label class="ctl">
+              <span class="ctl-name">Release</span>
+              <input type="range" id="v-comp-release" min="20" max="500" step="5" value="120" />
+              <span class="ctl-val" id="v-comp-release-val"></span>
+            </label>
+            <div class="gr-row"><span>Reducción de ganancia</span><b id="gr-comp">0.0 dB</b></div>
+          </div>
+
+          <div class="panel">
+            <h3>Reverb</h3>
+            <label class="ctl">
+              <span class="ctl-name">Tamaño de sala</span>
+              <input type="range" id="v-rev-size" min="0" max="100" step="1" value="35" />
+              <span class="ctl-val" id="v-rev-size-val"></span>
+            </label>
+            <label class="ctl">
+              <span class="ctl-name">Decaimiento</span>
+              <input type="range" id="v-rev-decay" min="0" max="100" step="1" value="40" />
+              <span class="ctl-val" id="v-rev-decay-val"></span>
+            </label>
+            <label class="ctl">
+              <span class="ctl-name">Mezcla</span>
+              <input type="range" id="v-rev-mix" min="0" max="100" step="1" value="18" />
+              <span class="ctl-val" id="v-rev-mix-val"></span>
+            </label>
+          </div>
+
+          <div class="panel">
+            <h3>Imagen estéreo</h3>
+            <label class="ctl">
+              <span class="ctl-name">Amplitud estéreo</span>
+              <input type="range" id="v-width" min="0" max="200" step="1" value="100" />
+              <span class="ctl-val" id="v-width-val"></span>
+            </label>
+            <p class="panel-hint">0 % = mono · 100 % = original · 200 % = extra ancho</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════ MASTER ══════════ -->
+      <section id="tab-master" class="tab-panel">
+        <div class="dropzone" id="drop-beat">
+          <input type="file" id="file-beat" accept="audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" hidden />
+          <svg viewBox="0 0 24 24" class="drop-icon"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
+          <p class="drop-title">Subir beat o canción completa</p>
+          <p class="drop-hint">Arrastra un MP3 o WAV, o toca para elegir. ¿Solo quieres masterizar? Sube aquí tu tema terminado, sin necesidad de pista vocal.</p>
+          <p class="drop-file" id="name-beat"></p>
+          <div class="drop-actions" hidden>
+            <button class="drop-btn" data-action="replace">Cambiar archivo</button>
+            <button class="drop-btn drop-btn-remove" data-action="remove">✕ Quitar pista</button>
+          </div>
+        </div>
+
+        <div class="panels">
+          <div class="panel panel-wide">
+            <h3>EQ Master · 5 bandas</h3>
+            <div class="eq5">
+              <div class="eq5-band">
+                <input type="range" id="m-eq-0" class="vslider" min="-12" max="12" step="0.5" value="0" />
+                <span class="ctl-val" id="m-eq-0-val"></span>
+                <span class="eq5-freq">60 Hz</span>
+              </div>
+              <div class="eq5-band">
+                <input type="range" id="m-eq-1" class="vslider" min="-12" max="12" step="0.5" value="0" />
+                <span class="ctl-val" id="m-eq-1-val"></span>
+                <span class="eq5-freq">250 Hz</span>
+              </div>
+              <div class="eq5-band">
+                <input type="range" id="m-eq-2" class="vslider" min="-12" max="12" step="0.5" value="0" />
+                <span class="ctl-val" id="m-eq-2-val"></span>
+                <span class="eq5-freq">1 kHz</span>
+              </div>
+              <div class="eq5-band">
+                <input type="range" id="m-eq-3" class="vslider" min="-12" max="12" step="0.5" value="0" />
+                <span class="ctl-val" id="m-eq-3-val"></span>
+                <span class="eq5-freq">4 kHz</span>
+              </div>
+              <div class="eq5-band">
+                <input type="range" id="m-eq-4" class="vslider" min="-12" max="12" step="0.5" value="0" />
+                <span class="ctl-val" id="m-eq-4-val"></span>
+                <span class="eq5-freq">10 kHz</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Maximizador y limitador</h3>
+            <label class="ctl">
+              <span class="ctl-name">Maximizador</span>
+              <input type="range" id="m-max" min="0" max="12" step="0.1" value="0" />
+              <span class="ctl-val" id="m-max-val"></span>
+            </label>
+            <label class="ctl">
+              <span class="ctl-name">Techo del limitador</span>
+              <input type="range" id="m-ceiling" min="-6" max="0" step="0.1" value="-1" />
+              <span class="ctl-val" id="m-ceiling-val"></span>
+            </label>
+            <div class="gr-row"><span>Reducción del limitador</span><b id="gr-limiter">0.0 dB</b></div>
+            <p class="panel-hint">Protección por recorte de muestras al techo (−1 dB por defecto), igual en reproducción y exportación. No garantiza un techo true-peak; puede saturar.</p>
+          </div>
+
+          <div class="panel">
+            <h3>Medidor LUFS</h3>
+            <div class="lufs-big">
+              <span id="lufs-short">—</span>
+              <small>LUFS short-term</small>
+            </div>
+            <div class="lufs-scale">
+              <div class="lufs-track">
+                <div class="lufs-target-zone"></div>
+                <div class="lufs-fill" id="lufs-bar"></div>
+              </div>
+              <div class="lufs-marks"><span>−30</span><span>−14</span><span>0</span></div>
+            </div>
+            <div class="lufs-rows">
+              <div class="lufs-row"><span>Momentáneo</span><b id="lufs-momentary">—</b></div>
+              <div class="lufs-row"><span>Integrado</span><b id="lufs-integrated">—</b></div>
+            </div>
+            <div class="chip chip-neutral" id="lufs-status">Reproduce para medir</div>
+            <p class="panel-hint">Estimaciones orientativas de loudness; referencia −14 LUFS. No es una certificación de plataformas.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════ MEZCLA ══════════ -->
+      <section id="tab-mezcla" class="tab-panel">
+        <div class="strips">
+          <div class="strip" id="strip-vocal">
+            <div class="strip-head">
+              <span class="strip-title">Voz</span>
+              <span class="strip-file" id="strip-name-vocal">Sin archivo</span>
+              <button class="strip-remove" id="strip-remove-vocal" title="Quitar pista vocal" hidden>✕</button>
+            </div>
+            <div class="wave-wrap" data-seek="vocal" title="Toca para saltar a esa posición">
+              <canvas id="wave-vocal" class="wave"></canvas>
+              <div class="playhead" id="ph-vocal"></div>
+            </div>
+            <div class="strip-controls">
+              <div class="strip-btns">
+                <button id="solo-vocal" class="sbtn sbtn-solo" title="Solo voz">S</button>
+                <button id="mute-vocal" class="sbtn sbtn-mute" title="Silenciar voz">M</button>
+              </div>
+              <label class="ctl ctl-fader">
+                <span class="ctl-name">Volumen</span>
+                <input type="range" id="mix-vocal-vol" min="0" max="100" step="1" value="85" />
+                <span class="ctl-val" id="mix-vocal-vol-val"></span>
+              </label>
+              <label class="ctl">
+                <span class="ctl-name">Paneo</span>
+                <input type="range" id="mix-vocal-pan" min="-100" max="100" step="1" value="0" />
+                <span class="ctl-val" id="mix-vocal-pan-val"></span>
+              </label>
+              <canvas class="meter" id="meter-vocal" width="14" height="96"></canvas>
+            </div>
+          </div>
+
+          <div class="strip" id="strip-beat">
+            <div class="strip-head">
+              <span class="strip-title">Beat</span>
+              <span class="strip-file" id="strip-name-beat">Sin archivo</span>
+              <button class="strip-remove" id="strip-remove-beat" title="Quitar beat" hidden>✕</button>
+            </div>
+            <div class="wave-wrap" data-seek="beat" title="Toca para saltar a esa posición">
+              <canvas id="wave-beat" class="wave"></canvas>
+              <div class="playhead" id="ph-beat"></div>
+            </div>
+            <div class="strip-controls">
+              <div class="strip-btns">
+                <button id="solo-beat" class="sbtn sbtn-solo" title="Solo beat">S</button>
+                <button id="mute-beat" class="sbtn sbtn-mute" title="Silenciar beat">M</button>
+              </div>
+              <label class="ctl ctl-fader">
+                <span class="ctl-name">Volumen</span>
+                <input type="range" id="mix-beat-vol" min="0" max="100" step="1" value="80" />
+                <span class="ctl-val" id="mix-beat-vol-val"></span>
+              </label>
+              <label class="ctl">
+                <span class="ctl-name">Paneo</span>
+                <input type="range" id="mix-beat-pan" min="-100" max="100" step="1" value="0" />
+                <span class="ctl-val" id="mix-beat-pan-val"></span>
+              </label>
+              <canvas class="meter" id="meter-beat" width="14" height="96"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════ EXPORTAR ══════════ -->
+      <section id="tab-exportar" class="tab-panel">
+        <div class="panels">
+          <div class="panel">
+            <h3>Formato de salida</h3>
+            <div class="radio-row">
+              <label class="radio"><input type="radio" name="format" value="wav" checked /> <span>WAV <small>calidad máxima</small></span></label>
+              <label class="radio"><input type="radio" name="format" value="mp3" /> <span>MP3 <small>320 kbps</small></span></label>
+            </div>
+            <button id="btn-export-analyze" class="btn-gold" disabled>Analizar y preparar mezcla</button>
+            <p class="panel-hint" id="export-status">Carga al menos una pista para exportar.</p>
+          </div>
+
+          <div class="panel" id="export-results" hidden>
+            <h3>Análisis final</h3>
+            <div class="lufs-rows">
+              <div class="lufs-row"><span>LUFS integrado</span><b id="export-lufs">—</b></div>
+              <div class="lufs-row"><span>Pico (dBTP aprox.)</span><b id="export-peak">—</b></div>
+            </div>
+            <div class="chip chip-neutral" id="export-verdict">—</div>
+            <p class="panel-hint" id="export-suggestion"></p>
+            <button id="btn-download" class="btn-gold">Descargar mezcla</button>
+          </div>
+        </div>
+      </section>
+<section id="tab-conversor" class="tab-panel"></section>
+    </main>
+
+    <footer class="foot">ASTRA STUDIO · Todo el procesamiento ocurre en tu navegador — tus pistas no se suben a ningún servidor.</footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
