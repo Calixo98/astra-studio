@@ -87,3 +87,13 @@ test('versioned browser headers and same-origin worklet have no script-inline/ev
  assert.match(await read('audio/lufsProcessor.js'),/registerProcessor\('lufs-processor'/);
  const editor=await read('editor/editor.ts');assert.match(editor,/saveGeneration\+\+;clearTimeout\(saveTimer\)/);assert.match(editor,/history.reset\(newProject\(\)\)/);assert.match(editor,/allowAutosave=false;draw\(\)/);
 });
+
+test('CI is least-privilege, immutable-pinned and audits build dependencies independently',async()=>{
+ const workflow=await fs.readFile(new URL('../.github/workflows/checks.yml',import.meta.url),'utf8');
+ assert.match(workflow,/permissions:\s+contents: read/);assert.doesNotMatch(workflow,/pull_request_target|secrets\.|contents: write|npm audit[^\n]*\|\|/);
+ const uses=[...workflow.matchAll(/uses: ([^\s#]+)/g)].map(m=>m[1]);assert.equal(uses.length,4);
+ for(const action of uses)assert.match(action,/^actions\/(checkout|setup-node)@[a-f0-9]{40}$/);
+ assert.match(workflow,/persist-credentials: false/);assert.match(workflow,/run: npm ci/);assert.match(workflow,/run: npm test/);assert.match(workflow,/run: npm run typecheck/);assert.match(workflow,/run: npm run build/);
+ assert.match(workflow,/run: npm audit --omit=dev/);assert.match(workflow,/if: always\(\)\s+run: npm audit\s/);
+ const updates=await fs.readFile(new URL('../.github/dependabot.yml',import.meta.url),'utf8');assert.match(updates,/package-ecosystem: npm/);assert.match(updates,/package-ecosystem: github-actions/);assert.equal([...updates.matchAll(/interval: weekly/g)].length,2);
+});

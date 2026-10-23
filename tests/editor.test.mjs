@@ -126,3 +126,13 @@ test('numeric editor forms permit fractional source samples without native step 
   }
   assert.match(ui,/id="ed-select-clip"/);
 });
+
+test('canceling before/after rendering discards first result and skips second native stage',async()=>{
+  const {renderPair}=await renderHarness(),contexts=[],original=globalThis.OfflineAudioContext;
+  let release;const wait=new Promise(r=>release=r),controller=new AbortController();
+  globalThis.OfflineAudioContext=offlineHarness(contexts,wait);
+  try{
+    const operation=renderPair(fixture(),new Map([['asset-1',asset()]]),controller.signal);
+    controller.abort();release();await assert.rejects(operation,{name:'AbortError'});assert.equal(contexts.length,1);
+  }finally{globalThis.OfflineAudioContext=original;}
+});

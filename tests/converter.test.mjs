@@ -68,3 +68,10 @@ test('worker WAV and error responses', async () => {
   self.onmessage({data: {channels: fixture(1).channels, rate: 44100, format: 'exe', bitrate: 192}});
   assert.match(result.error, /Formato/);
 });
+
+test('worker runtime rejects null, unequal, non-typed and nonfinite channel messages',()=>{
+ for(const data of [null,{}, {channels:[]}, {channels:[[0]]}, {channels:[new Float32Array(1),new Float32Array(2)]},{channels:[Float32Array.of(NaN)]}]){
+  self.onmessage({data:data===null?null:{rate:44100,format:'wav',bitrate:192,...data}});
+  assert.equal(typeof result.error,'string');assert.equal(result.blob,undefined);
+ }
+});

@@ -87,11 +87,14 @@ function refreshAvailability(): void {
     : 'Carga al menos una pista para exportar.';
 }
 
+const trackRequests = { vocal: 0, beat: 0 };
 async function loadTrack(id: TrackId, file: File, propagateError = false): Promise<void> {
+  const request = ++trackRequests[id];
   const ui = trackUi[id];
   ui.name.textContent = 'Decodificando…';
   try {
     const buffer = await engine.loadFile(id, file);
+    if(request !== trackRequests[id]) return;
     const label = `${file.name} · ${fmtTime(buffer.duration)}`;
     ui.name.textContent = label;
     ui.stripName.textContent = label;
@@ -102,6 +105,7 @@ async function loadTrack(id: TrackId, file: File, propagateError = false): Promi
     setTransportUi();
     refreshAvailability();
   } catch (err) {
+    if(request !== trackRequests[id]) return;
     if (err instanceof DOMException && err.name === 'AbortError') return;
     ui.name.textContent = err instanceof Error ? err.message : 'No se pudo leer el audio.';
     if (propagateError) throw err;
@@ -109,6 +113,7 @@ async function loadTrack(id: TrackId, file: File, propagateError = false): Promi
 }
 
 function removeTrack(id: TrackId): void {
+  trackRequests[id]++;
   const ui = trackUi[id];
   engine.clearTrack(id);
   ui.input.value = '';
