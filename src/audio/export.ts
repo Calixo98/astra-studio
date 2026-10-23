@@ -1,13 +1,14 @@
 // Exportación: reconstruye el grafo completo en un OfflineAudioContext con
 // los parámetros actuales, renderiza, mide LUFS/pico y codifica WAV o MP3.
 
-import { Mp3Encoder } from '@breezystack/lamejs';
+import { encodeInWorker } from './encodeWorker';
+import { canceled } from './converterHelpers';
 import { state, faderToGain, effectiveMuteGains } from './state';
 import { reverbSeconds } from './reverb';
 import { createVocalChain } from './vocalChain';
 import { createMasterChain } from './masterChain';
 import { measureLoudness } from './lufs';
-import { encodeWav, floatToInt16 } from './wavEncoder';
+import { encodeWav } from './wavEncoder';
 import type { Engine } from './engine';
 
 export interface ExportAnalysis {
@@ -20,7 +21,8 @@ export interface ExportAnalysis {
 
 const TARGET_LUFS = -14; // normalización de Spotify y YouTube
 
-export async function renderMix(engine: Engine): Promise<AudioBuffer> {
+export async function renderMix(engine: Engine, signal?: AbortSignal): Promise<AudioBuffer> {
+  if (signal?.aborted) throw canceled();
   const snapshot = structuredClone(state);
   const vocalBuf = engine.tracks.vocal.buffer;
   const beatBuf = engine.tracks.beat.buffer;
@@ -69,6 +71,7 @@ export async function renderMix(engine: Engine): Promise<AudioBuffer> {
   }
 
   const rendered = await ctx.startRendering();
+  if (signal?.aborted) throw canceled();
   return rendered;
 }
 
@@ -111,22 +114,8 @@ export function analyzeBuffer(buffer: AudioBuffer): ExportAnalysis {
   };
 }
 
-export function encodeMp3(buffer: AudioBuffer, kbps = 320): Blob {
-  const nCh = Math.min(buffer.numberOfChannels, 2);
-  const left = floatToInt16(buffer.getChannelData(0));
-  const right = nCh > 1 ? floatToInt16(buffer.getChannelData(1)) : left;
-  const encoder = new Mp3Encoder(2, buffer.sampleRate, kbps);
-  const chunks: Uint8Array[] = [];
-  const blockSize = 1152;
-  for (let i = 0; i < left.length; i += blockSize) {
-    const l = left.subarray(i, i + blockSize);
-    const r = right.subarray(i, i + blockSize);
-    const mp3 = encoder.encodeBuffer(l, r);
-    if (mp3.length > 0) chunks.push(new Uint8Array(mp3));
-  }
-  const end = encoder.flush();
-  if (end.length > 0) chunks.push(new Uint8Array(end));
-  return new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
+export function encodeMp3(buffer: AudioBuffer, kbps = 320, signal?: AbortSignal): Promise<Blob> {
+  return encodeInWorker(buffer, 'mp3', kbps, signal);
 }
 
 export function encodeWavExport(buffer: AudioBuffer): Blob {

@@ -1,7 +1,8 @@
 import { ProjectHistory, newProject, newId, cloneProject, projectDuration, splitClip, trimClip, MAX_TRACKS, MAX_PROJECT_PCM, MAX_PROJECT_SECONDS, validateProject, type Asset, type Clip, type Project } from './model';
 import { readSaved, serializeProject, SaveQueue, type SavedProject } from './storage';
 import { renderPair, type RenderPair } from './render';
-import { validateFile, validateAudio } from '../audio/converterHelpers';
+import { decodeFile } from '../audio/converterHelpers';
+import { encodeInWorker } from '../audio/encodeWorker';
 import { downloadBlob } from '../audio/export';
 import { drawWaveform } from '../ui/waveform';
 
@@ -22,7 +23,7 @@ export function initEditor(stopLegacy: () => void): void {
     <label class="editor-clip-picker">Seleccionar cualquier clip (incluso superpuestos) <select id="ed-select-clip"><option value="">Elige un clip</option></select></label>
     <form id="ed-clip-form" class="editor-clip-controls" hidden><h3>Clip seleccionado</h3><label>Posición (s)<input id="ed-clip-start" type="number" min="0" step="any" required></label><label>Inicio en original (s)<input id="ed-clip-offset" type="number" min="0" step="any" required></label><label>Duración (s)<input id="ed-clip-duration" type="number" min="0.001" step="any" required></label><label>Entrada suave (s)<input id="ed-clip-in" type="number" min="0" step="any" required></label><label>Salida suave (s)<input id="ed-clip-out" type="number" min="0" step="any" required></label><button type="submit">Aplicar al clip</button><button id="ed-split" type="button">Dividir en cursor</button><button id="ed-duplicate" type="button">Duplicar</button><button id="ed-delete-clip" type="button">Eliminar clip</button></form>
     <div class="editor-monitor"><canvas id="ed-spectrum" width="700" height="100" role="img" aria-label="Espectro de frecuencias y nivel de la escucha; descripción textual a continuación"></canvas><p id="ed-meter">Sin reproducción · Nivel y espectro de la escucha</p></div></section>
-    <section class="editor-output"><div><span class="editor-step">04</span><h2>Tu mezcla, lista para escuchar</h2><p id="ed-analysis">Renderiza para obtener una estimación de nivel. No es una certificación de mastering.</p></div><div><button id="ed-render">Preparar mezcla</button><label>Formato <select id="ed-format"><option value="wav">WAV PCM16</option><option value="mp3-192">MP3 192 kbps</option><option value="mp3-320">MP3 320 kbps</option></select></label><button id="ed-download" disabled>Descargar mezcla</button></div></section>
+    <section class="editor-output"><div><span class="editor-step">04</span><h2>Tu mezcla, lista para escuchar</h2><p id="ed-analysis">Renderiza para obtener una estimación de nivel. No es una certificación de mastering.</p></div><div><button id="ed-render">Preparar mezcla</button><button id="ed-cancel" hidden>Cancelar operación</button><label>Formato <select id="ed-format"><option value="wav">WAV PCM16</option><option value="mp3-192">MP3 192 kbps</option><option value="mp3-320">MP3 320 kbps</option></select></label><button id="ed-download" disabled>Descargar mezcla</button></div></section>
     <p id="ed-status" class="editor-status" role="status" aria-live="polite">Importa tus pistas para comenzar.</p><p class="panel-hint">Herramientas avanzadas: Voz, Master, Mezcla y Exportar conservan su sesión independiente. Sus controles no modifican este editor. El Conversor también es independiente.</p>`;
   const $=<T extends HTMLElement=HTMLElement>(id: string): T=>root.querySelector<T>('#'+id)!;
   const input=(id: string)=>$<HTMLInputElement>(id);
@@ -32,6 +33,7 @@ export function initEditor(stopLegacy: () => void): void {
   let selected: string | null=null;
   let revision=0, pair: RenderPair | null=null, pairRevision=-1;
   let rendering=false, importing=false, encoding=false, initializing=true;
+  let operation: AbortController | null=null;
   let saved: SavedProject | null=null, allowAutosave=false;
   const saves=new SaveQueue(); let saveTimer: number | undefined;
   let cursor=0, before=false, playing=false, startTime=0, playEpoch=0;
@@ -50,15 +52,16 @@ export function initEditor(stopLegacy: () => void): void {
     input('ed-cursor').value=cursor.toFixed(2); $('ed-position').textContent=cursor.toFixed(2)+' s';
   }
   function updateButtons(): void {
+    button('ed-cancel').hidden=!(rendering || encoding || importing);
     button('ed-undo').disabled=!history.canUndo || importing;
     button('ed-redo').disabled=!history.canRedo || importing;
-    button('ed-play').disabled=initializing || importing || rendering || !projectDuration(p());
-    button('ed-render').disabled=initializing || importing || rendering || !projectDuration(p());
-    button('ed-download').disabled=encoding || !pair || pairRevision!==revision;
+    button('ed-play').disabled=initializing || importing || rendering || encoding || !projectDuration(p());
+    button('ed-render').disabled=initializing || importing || rendering || encoding || !projectDuration(p());
+    button('ed-download').disabled=encoding || rendering || importing || !pair || pairRevision!==revision;
     button('ed-new').disabled=initializing || importing;
     button('ed-save').disabled=initializing || importing;
     button('ed-restore').disabled=initializing || importing || !saved;
-    input('ed-files').disabled=initializing || importing;
+    input('ed-files').disabled=initializing || importing || rendering || encoding;
   }
   async function saveNow(): Promise<void> {
     if(!allowAutosave){$('ed-save-status').textContent='Hay un guardado anterior. Reábrelo o pulsa Guardar local para reemplazarlo.';return;}
@@ -129,16 +132,15 @@ export function initEditor(stopLegacy: () => void): void {
     updateButtons();
   }
   async function importFiles(files: File[]): Promise<void> {
-    if(importing || initializing)return;
-    importing=true;updateButtons();status('Leyendo audio local…');
+    if(importing || initializing || rendering || encoding)return;
+    importing=true;operation=new AbortController();const signal=operation.signal;updateButtons();status('Leyendo audio local…');
     let count=0;const errors:string[]=[];
     try {
       for(const file of files){
         if(p().tracks.length>=MAX_TRACKS){errors.push('Máximo 8 pistas.');break;}
         try {
-          validateFile(file.size);
-          const buffer=await ctx.decodeAudioData(await file.arrayBuffer());
-          validateAudio(buffer.numberOfChannels,buffer.length,buffer.sampleRate);
+          if(signal.aborted)break;
+          const buffer=await decodeFile(file,ctx,()=>!signal.aborted,MAX_PROJECT_SECONDS);
           if(buffer.duration<0.001)throw new Error('El audio es demasiado corto para crear un clip.');
           if(buffer.duration>MAX_PROJECT_SECONDS)throw new Error('Cada audio del editor debe durar como máximo 3 minutos.');
           const bytes=[...assets.values()].reduce((n,a)=>n+a.buffer.length*a.buffer.numberOfChannels*4,0)+buffer.length*buffer.numberOfChannels*4;
@@ -146,16 +148,16 @@ export function initEditor(stopLegacy: () => void): void {
           const id=newId();assets.set(id,{id,name:file.name,buffer});
           const next=cloneProject(p());next.tracks.push({id:newId(),name:file.name.slice(0,100),role:p().settings.goal==='voice'?'voice':'instrument',volume:80,mute:false,solo:false,clips:[{id:newId(),assetId:id,start:0,offset:0,duration:buffer.duration,fadeIn:Math.min(0.01,buffer.duration/2),fadeOut:Math.min(0.01,buffer.duration/2)}]});
           changed(next);count++;
-        }catch(e){errors.push(file.name+': '+errorText(e));}
+        }catch(e){errors.push(file.name+': '+errorText(e));if(signal.aborted)break;}
       }
     }finally{importing=false;updateButtons();status(`${count} pista(s) añadida(s). ${errors.join(' ')}`);}
   }
   async function prepare(): Promise<RenderPair | null> {
     if(pair && pairRevision===revision)return pair;
-    if(rendering || importing)return null;
-    rendering=true;updateButtons();const token=revision;status('Preparando antes/después con el arreglo completo…');
+    if(rendering || importing || encoding)return null;
+    rendering=true;operation=new AbortController();const signal=operation.signal;updateButtons();const token=revision;status('Preparando antes/después con el arreglo completo…');
     try {
-      const snapshot=cloneProject(p());const result=await renderPair(snapshot,new Map(assets));
+      const snapshot=cloneProject(p());const result=await renderPair(snapshot,new Map(assets),signal);
       if(token!==revision){status('El arreglo cambió durante la preparación. Vuelve a escuchar.');return null;}
       pair=result;pairRevision=token;
       $('ed-analysis').textContent=`Nivel integrado estimado: ${Number.isFinite(result.integrated)?result.integrated.toFixed(1)+' LUFS':'no disponible (señal corta/baja)'}. Pico interpolado estimado: ${result.peak.toFixed(1)} dB. Sin certificación. ${result.matched?'A/B con igualación estimada por atenuación.':'A/B sin igualación: loudness insuficiente para comparar.'}`;
@@ -193,20 +195,14 @@ export function initEditor(stopLegacy: () => void): void {
     if(encoding || !pair || pairRevision!==revision)return;
     encoding=true;updateButtons();const token=revision,buffer=pair.after;
     const format=$<HTMLSelectElement>('ed-format').value;
-    const worker=new Worker(new URL('../audio/converterWorker.ts',import.meta.url),{type:'module'});
+    operation=new AbortController();const signal=operation.signal;
     status('Codificando en segundo plano local…');
     try {
-      const blob=await new Promise<Blob>((resolve,reject)=>{
-        const timeout=window.setTimeout(()=>reject(new Error('La codificación tardó demasiado. Intenta WAV.')),120000);
-        worker.onmessage=e=>{clearTimeout(timeout);e.data.error?reject(new Error(e.data.error)):resolve(e.data.blob);};
-        worker.onerror=()=>{clearTimeout(timeout);reject(new Error('No se pudo codificar el audio.'));};
-        const channels=Array.from({length:buffer.numberOfChannels},(_,i)=>buffer.getChannelData(i).slice());
-        worker.postMessage({channels,rate:buffer.sampleRate,format:format==='wav'?'wav':'mp3',bitrate:format==='mp3-192'?192:320},channels.map(c=>c.buffer));
-      });
+      const blob=await encodeInWorker(buffer,format==='wav'?'wav':'mp3',format==='mp3-192'?192:320,signal);
       if(token!==revision){status('El proyecto cambió. Se descartó la descarga anterior.');return;}
       downloadBlob(blob,`${p().name.replace(/[^\p{L}\p{N} _-]/gu,'_') || 'astra-mezcla'}.${format==='wav'?'wav':'mp3'}`);
       status('Descarga generada desde la mezcla procesada exacta, sin atenuación A/B.');
-    }catch(e){status(errorText(e));}finally{worker.terminate();encoding=false;updateButtons();}
+    }catch(e){status(errorText(e));}finally{encoding=false;updateButtons();}
   }
   input('ed-files').addEventListener('change',()=>{void importFiles(Array.from(input('ed-files').files??[]));input('ed-files').value='';});
   $('ed-drop').addEventListener('dragover',e=>{e.preventDefault();});
@@ -242,6 +238,7 @@ export function initEditor(stopLegacy: () => void): void {
   button('ed-pause').addEventListener('click',()=>stop(false));button('ed-stop').addEventListener('click',()=>stop());
   input('ed-cursor').addEventListener('change',()=>{const requested=Number(input('ed-cursor').value)||0;stop(false);cursor=Math.max(0,Math.min(requested,pair?.after.duration??projectDuration(p())));input('ed-cursor').value=cursor.toFixed(2);});
   button('ed-ab').addEventListener('click',()=>{const resume=playing;stop(false);before=!before;button('ed-ab').textContent='A/B: '+(before?'Antes':'Después');button('ed-ab').setAttribute('aria-pressed',String(before));if(resume)void play();});
+  button('ed-cancel').addEventListener('click',()=>{operation?.abort();stop();status('Cancelado. Un render o decode nativo ya iniciado puede terminar internamente; se descarta su resultado.');});
   button('ed-render').addEventListener('click',()=>void prepare());button('ed-download').addEventListener('click',()=>void exportAudio());
   button('ed-save').addEventListener('click',()=>{if(saved&&!allowAutosave&&!confirm('¿Reemplazar el proyecto guardado en este navegador con el actual?'))return;allowAutosave=true;clearTimeout(saveTimer);void saveNow();});
   button('ed-new').addEventListener('click',()=>{if(!confirm('¿Crear un proyecto nuevo? El guardado local se reemplazará y se vaciarán el audio y el historial actuales.'))return;clearTimeout(saveTimer);stop();assets=new Map();history.reset(newProject());selected=null;allowAutosave=true;changed();void saveNow();});

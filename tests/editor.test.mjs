@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import ts from 'typescript';
 const read = file => fs.readFile(new URL('../src/editor/'+file,import.meta.url),'utf8');
 const moduleUrl = source => 'data:text/javascript;base64,'+Buffer.from(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.ESNext}}).outputText).toString('base64');
+const helpersUrl=moduleUrl(await fs.readFile(new URL('../src/audio/converterHelpers.ts',import.meta.url),'utf8'));
 const modelUrl=moduleUrl(await read('model.ts'));
 const {newProject,ProjectHistory,splitClip,trimClip,validateProject,projectDuration,audibleTracks,comparisonGains,MAX_PROJECT_SECONDS}=await import(modelUrl);
 const {serializeProject,validateSaved,SaveQueue}=await import(moduleUrl((await read('storage.ts')).replace("'./model'",JSON.stringify(modelUrl))));
@@ -73,7 +74,7 @@ test('save queue runs in submission order even across delayed failure, newest sn
   const caught=one.catch(e=>e.message);await new Promise(r=>setTimeout(r,0));assert.deepEqual(events,['start1']);release();assert.equal(await caught,'quota');await two;assert.equal(stored,2);assert.deepEqual(events,['start1','fail1','start2']);
 });
 async function renderHarness() {
-  const source=(await read('render.ts'))
+  const source=(await read('render.ts')).replace("'../audio/converterHelpers'",JSON.stringify(helpersUrl))
     .replace("'./model'",JSON.stringify(modelUrl))
     .replace("import { createMasterChain } from '../audio/masterChain';",'const createMasterChain=(ctx,p)=>{ctx.masterParams=p;return {input:ctx.createGain(),output:ctx.createGain()};};')
     .replace("import { createVocalChain } from '../audio/vocalChain';",'const createVocalChain=(ctx,p)=>{ctx.vocalParams=p;return {input:ctx.createGain(),output:ctx.createGain()};};')

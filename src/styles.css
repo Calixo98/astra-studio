@@ -1056,3 +1056,6 @@ body .help-control > .help-trigger,body .help-anchor > .help-trigger,#tab-editor
 .eq5-band { min-width:44px; }
 .eq5-band .help-action { flex-direction:column-reverse; gap:4px; }
 .eq5-band .help-trigger { margin:0; }
+
+.global-recording { position: sticky; top: 0; z-index: 1000; background: #641c23; color: white; padding: 12px; border: 2px solid #ff8b8b; text-align: center; }
+.global-recording[hidden] { display: none; }

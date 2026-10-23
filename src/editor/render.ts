@@ -1,3 +1,4 @@
+import { canceled } from '../audio/converterHelpers';
 import { audibleTracks, projectDuration, comparisonGains, type Asset, type Project, type Settings } from './model';
 import { createMasterChain } from '../audio/masterChain';
 import { createVocalChain } from '../audio/vocalChain';
@@ -38,11 +39,14 @@ export async function renderProject(project: Project, assets: Map<string,Asset>,
   return ctx.startRendering();
 }
 export interface RenderPair { before: AudioBuffer; after: AudioBuffer; gains: {before:number;after:number}; integrated: number; peak: number; matched: boolean }
-export async function renderPair(project: Project, assets: Map<string,Asset>): Promise<RenderPair> {
+export async function renderPair(project: Project, assets: Map<string,Asset>, signal?: AbortSignal): Promise<RenderPair> {
   const snapshot=structuredClone(project);
   const registry=new Map(assets);
+  if(signal?.aborted)throw canceled();
   const before=await renderProject(snapshot,registry,false);
+  if(signal?.aborted)throw canceled();
   const after=await renderProject(snapshot,registry,true);
+  if(signal?.aborted)throw canceled();
   const a=measureLoudness(before),b=measureLoudness(after);
   return {before,after,gains:comparisonGains(a.integrated,b.integrated),integrated:b.integrated,peak:b.truePeak,matched:Number.isFinite(a.integrated)&&Number.isFinite(b.integrated)};
 }

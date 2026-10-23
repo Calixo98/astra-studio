@@ -1,10 +1,11 @@
 import { Mp3Encoder } from '@breezystack/lamejs';
 import { encodeWav, floatToInt16 } from './wavEncoder';
-import { validateAudio, type OutputFormat } from './converterHelpers';
+import { validateChannels, type OutputFormat } from './converterHelpers';
 self.onmessage = (event: MessageEvent<{channels: Float32Array[]; rate: number; format: OutputFormat; bitrate: number}>) => {
   try {
+    if (!event.data || typeof event.data !== 'object') throw new Error('Solicitud no válida.');
     const { channels, rate, format, bitrate } = event.data;
-    validateAudio(channels.length, channels[0].length, rate);
+    validateChannels(channels, rate);
     if (format !== 'wav' && format !== 'mp3') throw new Error('Formato de salida no válido.');
     if (![128, 192, 320].includes(bitrate)) throw new Error('Tasa MP3 no válida.');
     let blob: Blob;

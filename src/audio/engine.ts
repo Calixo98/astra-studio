@@ -1,3 +1,4 @@
+import { decodeFile, MAX_PCM_BYTES, canceled } from './converterHelpers';
 // Motor de audio en vivo: grafo compartido, carga de archivos y transporte
 // sincronizado de las dos pistas (voz y beat).
 
@@ -89,9 +90,14 @@ export class Engine {
     }
   }
 
+  private loads = { vocal: 0, beat: 0 };
+
   async loadFile(id: TrackId, file: File): Promise<AudioBuffer> {
-    const data = await file.arrayBuffer();
-    const buffer = await this.ctx.decodeAudioData(data);
+    const token = ++this.loads[id];
+    const buffer = await decodeFile(file, this.ctx, () => token === this.loads[id]);
+    if (token !== this.loads[id]) throw canceled();
+    const other = this.tracks[id === 'vocal' ? 'beat' : 'vocal'].buffer;
+    if (buffer.length * buffer.numberOfChannels * 4 + (other ? other.length * other.numberOfChannels * 4 : 0) > MAX_PCM_BYTES) throw new Error('Las dos pistas superan 128 MiB PCM. Quita una pista.');
     this.stop();
     this.tracks[id].buffer = buffer;
     this.tracks[id].fileName = file.name;
@@ -100,6 +106,7 @@ export class Engine {
   }
 
   clearTrack(id: TrackId): void {
+    this.loads[id]++;
     this.stop();
     this.tracks[id].buffer = null;
     this.tracks[id].fileName = '';

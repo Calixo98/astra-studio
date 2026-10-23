@@ -1,3 +1,4 @@
+import { encodeInWorker } from './audio/encodeWorker';
 import { initHelp } from './ui/help';
 import { initEditor } from './editor/editor';
 import { RenderRevision } from './audio/renderRevision';
@@ -5,7 +6,7 @@ import { initConverter } from './ui/converter';
 import './styles.css';
 import { Engine, type TrackId } from './audio/engine';
 import { state } from './audio/state';
-import { renderMix, analyzeBuffer, encodeMp3, encodeWavExport, downloadBlob, type ExportAnalysis } from './audio/export';
+import { renderMix, analyzeBuffer,  downloadBlob, type ExportAnalysis } from './audio/export';
 import { VOCAL_PRESETS } from './audio/presets';
 import { initTabs } from './ui/tabs';
 import { initControls, syncControlsFromState } from './ui/controls';
@@ -101,8 +102,8 @@ async function loadTrack(id: TrackId, file: File, propagateError = false): Promi
     setTransportUi();
     refreshAvailability();
   } catch (err) {
-    console.error('Error al decodificar el audio', err);
-    ui.name.textContent = 'No se pudo leer el archivo. Usa un MP3 o WAV válido.';
+    if (err instanceof DOMException && err.name === 'AbortError') return;
+    ui.name.textContent = err instanceof Error ? err.message : 'No se pudo leer el audio.';
     if (propagateError) throw err;
   }
 }
@@ -280,6 +281,11 @@ window.addEventListener('resize', () => {
 
 const renderRevision = new RenderRevision();
 let exporting = false;
+let exportOperation: AbortController | null = null;
+const cancelExport = document.createElement('button');
+cancelExport.id = 'btn-export-cancel'; cancelExport.textContent = 'Cancelar operación'; cancelExport.hidden = true;
+btnExport.after(cancelExport);
+cancelExport.addEventListener('click', () => { exportOperation?.abort(); exportStatus.textContent = 'Cancelado. Un render nativo iniciado puede terminar internamente; su resultado se descarta.'; });
 let rendered: AudioBuffer | null = null;
 let lastAnalysis: ExportAnalysis | null = null;
 
@@ -295,7 +301,7 @@ engine.onChange = () => {
 btnExport.addEventListener('click', () => {
   if (exporting) return;
   void (async () => {
-    exporting = true;
+    exporting = true; exportOperation = new AbortController(); cancelExport.hidden = false;
     const startedRevision = renderRevision.capture();
     rendered = null;
     lastAnalysis = null;
@@ -304,7 +310,7 @@ btnExport.addEventListener('click', () => {
     exportStatus.textContent = 'Renderizando la mezcla con todos los efectos…';
     exportResults.hidden = true;
     try {
-      const result = await renderMix(engine);
+      const result = await renderMix(engine, exportOperation!.signal);
       if (!renderRevision.isCurrent(startedRevision)) {
         exportStatus.textContent = 'La mezcla cambió durante el render. Renderiza otra vez.';
         return;
@@ -327,25 +333,27 @@ btnExport.addEventListener('click', () => {
       exportResults.hidden = false;
       exportStatus.textContent = 'Análisis completado. Descarga tu mezcla cuando quieras.';
     } catch (err) {
-      console.error('Error al renderizar', err);
-      exportStatus.textContent = 'Ocurrió un error al renderizar la mezcla.';
+      exportStatus.textContent = err instanceof Error ? err.message : 'Ocurrió un error al renderizar la mezcla.';
     } finally {
-      exporting = false;
+      exporting = false; cancelExport.hidden = true;
       btnExport.disabled = !engine.hasAudio;
     }
   })();
 });
 
 $('btn-download').addEventListener('click', () => {
-  if (!rendered) return;
-  const format =
-    document.querySelector<HTMLInputElement>('input[name="format"]:checked')?.value ?? 'wav';
-  const stamp = new Date().toISOString().slice(0, 10);
-  if (format === 'mp3') {
-    downloadBlob(encodeMp3(rendered), `astra-mezcla-${stamp}.mp3`);
-  } else {
-    downloadBlob(encodeWavExport(rendered), `astra-mezcla-${stamp}.wav`);
-  }
+  if (!rendered || exporting) return;
+  const buffer = rendered, token = renderRevision.capture();
+  const format = document.querySelector<HTMLInputElement>('input[name="format"]:checked')?.value === 'mp3' ? 'mp3' : 'wav';
+  exporting = true; exportOperation = new AbortController(); cancelExport.hidden = false;
+  $('btn-download').setAttribute('disabled', ''); btnExport.disabled = true;
+  exportStatus.textContent = 'Codificando en segundo plano local…';
+  void encodeInWorker(buffer, format, 320, exportOperation.signal).then(blob => {
+    if (!renderRevision.isCurrent(token)) { exportStatus.textContent = 'La mezcla cambió. Descarga descartada.'; return; }
+    downloadBlob(blob, `astra-mezcla-${new Date().toISOString().slice(0, 10)}.${format}`);
+    exportStatus.textContent = 'Descarga preparada.';
+  }).catch(error => { exportStatus.textContent = error instanceof Error ? error.message : 'No se pudo codificar.'; })
+    .finally(() => { exporting = false; cancelExport.hidden = true; btnExport.disabled = !engine.hasAudio; if(rendered)$('btn-download').removeAttribute('disabled'); });
 });
 
 refreshAvailability();

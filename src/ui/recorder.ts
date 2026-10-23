@@ -1,6 +1,9 @@
 import { state } from '../audio/state';
 import type { Engine } from '../audio/engine';
 
+export const MAX_RECORDING_MS = 180000;
+export const MAX_RECORDING_BYTES = 25 * 1024 * 1024;
+
 type RecordingState = 'idle' | 'requesting' | 'recording' | 'stopping';
 
 export function initRecorder(engine: Engine, onRecorded: (file: File) => Promise<void>): void {
@@ -8,7 +11,18 @@ export function initRecorder(engine: Engine, onRecorded: (file: File) => Promise
   const timeEl = document.getElementById('rec-time')!;
   const hintEl = document.getElementById('rec-hint')!;
   if (!btn) return;
+  const globalPanel = document.getElementById('global-recording');
+  const globalStatus = document.getElementById('global-recording-status');
+  const globalStop = document.getElementById('global-recording-stop') as HTMLButtonElement | null;
+  const show = (message: string, active = true) => {
+    if (globalPanel) globalPanel.hidden = !active;
+    if (globalStatus) globalStatus.textContent = message;
+  };
   let phase: RecordingState = 'idle';
+  let abandoned = false;
+  let deadline: number | undefined;
+  let stopWatchdog: number | undefined;
+
   let recorder: MediaRecorder | null = null;
   let stream: MediaStream | null = null;
   let timer: number | undefined;
@@ -17,6 +31,8 @@ export function initRecorder(engine: Engine, onRecorded: (file: File) => Promise
     stream?.getTracks().forEach(track => track.stop());
     stream = null;
     window.clearInterval(timer);
+    window.clearTimeout?.(deadline);
+    window.clearTimeout?.(stopWatchdog);
     engine.stop();
     if (previous) {
       state.vocalMix.mute = previous.mute;
@@ -27,6 +43,7 @@ export function initRecorder(engine: Engine, onRecorded: (file: File) => Promise
   };
   const idle = () => {
     phase = 'idle';
+    show('', false);
     recorder = null;
     btn.disabled = false;
     btn.textContent = '● Grabar con micrófono';
@@ -34,7 +51,7 @@ export function initRecorder(engine: Engine, onRecorded: (file: File) => Promise
     timeEl.hidden = true;
   };
   const fail = (err: unknown) => {
-    console.warn('Recording failed', err);
+
     if (recorder) {
       recorder.onstop = null;
       recorder.ondataavailable = null;
@@ -46,22 +63,30 @@ export function initRecorder(engine: Engine, onRecorded: (file: File) => Promise
   };
   async function start(): Promise<void> {
     if (phase !== 'idle') return;
-    phase = 'requesting';
+    phase = 'requesting'; abandoned = false;
+    show('Esperando permiso del micrófono…');
     btn.disabled = true;
     btn.textContent = 'Esperando permiso…';
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       });
+      if(abandoned || document.hidden) { cleanup(); idle(); return; }
       const current = new MediaRecorder(stream);
       recorder = current;
       const chunks: BlobPart[] = [];
-      let failed = false;
-      current.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      let failed = false, bytes = 0;
+      current.ondataavailable = e => {
+        if (abandoned || failed) return;
+        bytes += e.data.size;
+        if(bytes > MAX_RECORDING_BYTES) { failed = true; fail(new Error('Límite de grabación')); hintEl.textContent='Toma descartada: supera 25 MiB. Graba una toma más corta.'; return; }
+        if (e.data.size > 0) chunks.push(e.data);
+      };
       current.onerror = e => { failed = true; fail(e); };
       current.onstop = () => {
         if (failed) return;
-        phase = 'stopping';
+        if(abandoned) { cleanup(); idle(); return; }
+        phase = 'stopping'; show('Procesando toma; micrófono detenido.');
         btn.disabled = true;
         const type = current.mimeType || 'audio/webm';
         const blob = new Blob(chunks, { type });
@@ -70,6 +95,7 @@ export function initRecorder(engine: Engine, onRecorded: (file: File) => Promise
         void (async () => {
           try {
             if (!blob.size) throw new Error('Empty recording');
+            if(abandoned)return;
             await onRecorded(new File([blob], 'toma-microfono.webm', { type }));
             hintEl.textContent = 'Toma cargada. La latencia del navegador no está compensada: revisa la alineación con el beat.';
           } catch (err) { fail(err); }
@@ -82,9 +108,11 @@ export function initRecorder(engine: Engine, onRecorded: (file: File) => Promise
       state.vocalMix.solo = false; // Existing solo vocal must not suppress the backing beat.
       engine.applyMix();
       await engine.ctx.resume();
-      current.start();
+      if(abandoned || document.hidden) { cleanup(); idle(); return; }
+      current.start(1000);
       if (engine.tracks.beat.buffer) engine.play();
-      phase = 'recording';
+      phase = 'recording'; show('● Micrófono grabando · máximo 3 minutos / 25 MiB');
+      deadline = window.setTimeout(() => stopCapture(), MAX_RECORDING_MS);
       btn.disabled = false;
       btn.textContent = '■ Detener grabación';
       btn.classList.add('recording');
@@ -97,12 +125,29 @@ export function initRecorder(engine: Engine, onRecorded: (file: File) => Promise
       }, 250);
     } catch (err) { fail(err); }
   }
+  function stopCapture(): void {
+    if (phase !== 'recording' || !recorder) return;
+    phase = 'stopping'; btn.disabled = true; show('Deteniendo micrófono…');
+    try {
+      recorder.stop();
+      stream?.getTracks().forEach(track => track.stop()); stream = null;
+      stopWatchdog = window.setTimeout(() => { if(phase==='stopping')fail(new Error('Stop timeout')); }, 5000);
+    } catch (err) { fail(err); }
+  }
+  function abandon(): void {
+    abandoned = true;
+    if(phase==='recording')stopCapture();
+    cleanup();
+    if(phase==='requesting')show('Solicitud cancelada. Si concedes permiso, se liberará sin grabar.');
+    hintEl.textContent='Toma cancelada. El micrófono se detiene al ocultar o abandonar esta página.';
+  }
   btn.addEventListener('click', () => {
-    if (phase === 'recording' && recorder) {
-      phase = 'stopping';
-      btn.disabled = true;
-      try { recorder.stop(); } catch (err) { fail(err); }
-    } else if (phase === 'idle') void start();
+    if (phase === 'recording') stopCapture();
+    else if (phase === 'idle') void start();
   });
-  window.addEventListener('pagehide', cleanup);
+  globalStop?.addEventListener('click', () => {
+    if(phase==='recording')stopCapture();else abandon();
+  });
+  document.addEventListener?.('visibilitychange', () => { if(document.hidden && phase!=='idle')abandon(); });
+  window.addEventListener('pagehide', abandon);
 }
